@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { load } from "@2gis/mapgl";
 import EventCard from "./EventCard";
+import { useNotification } from "../../hooks/useNotification";
+import { Notification } from "../ui/Notification";
 
 export default function EventMap() {
   console.log("EventMap mounted");
@@ -12,6 +14,9 @@ export default function EventMap() {
   const mapglAPIRef = useRef(null);
   const markersRef = useRef([]);
 
+  const { notification, showNotification, hideNotification } =
+    useNotification();
+
   useEffect(() => {
     const loadEvents = async () => {
       try {
@@ -21,6 +26,7 @@ export default function EventMap() {
         setEvents(data.events);
       } catch (error) {
         console.error("Ошибка загрузки событий:", error);
+        showNotification("Ошибка загрузки событий", "error");
       }
     };
 
@@ -90,8 +96,10 @@ export default function EventMap() {
       const response = await fetch("/api/events");
       const data = await response.json();
       setEvents(data.events);
+      showNotification("События обновлены", "success");
     } catch (error) {
       console.error("Ошибка загрузки событий:", error);
+      showNotification("Ошибка обновления событий", "error");
     }
   };
 
@@ -145,6 +153,12 @@ export default function EventMap() {
           </svg>
         </button>
       )}
+      <Notification
+        message={notification.message}
+        type={notification.type}
+        isVisible={notification.isVisible}
+        onClose={hideNotification}
+      />
     </div>
   );
 }

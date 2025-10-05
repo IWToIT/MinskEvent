@@ -1,6 +1,8 @@
 "use client";
 import { useState } from "react";
 import axios from "axios";
+import { useNotification } from "../../../hooks/useNotification";
+import { Notification } from "../../../components/ui/Notification";
 
 export default function CreateEventPage() {
   const [formData, setFormData] = useState({
@@ -10,12 +12,15 @@ export default function CreateEventPage() {
     coordinates: ["", ""],
   });
 
+  const { notification, showNotification, hideNotification } =
+    useNotification();
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     try {
       if (!formData.coordinates[0] || !formData.coordinates[1]) {
-        alert("Введите координаты");
+        showNotification("Введите координаты", "error");
         return;
       }
 
@@ -30,7 +35,7 @@ export default function CreateEventPage() {
       const response = await axios.post("/api/events", eventData);
 
       if (response.data.success) {
-        alert("Событие добавлено!");
+        showNotification("Событие успешно добавлено!", "success");
         setFormData({
           title: "",
           description: "",
@@ -39,7 +44,7 @@ export default function CreateEventPage() {
         });
       }
     } catch (error) {
-      alert("Ошибка при добавлении события");
+      showNotification("Ошибка при добавлении события", "error");
       console.error("Error details:", error);
     }
   };
@@ -141,6 +146,12 @@ export default function CreateEventPage() {
             Добавить событие
           </button>
         </form>
+        <Notification
+          message={notification.message}
+          type={notification.type}
+          isVisible={notification.isVisible}
+          onClose={hideNotification}
+        />
       </div>
     </div>
   );
