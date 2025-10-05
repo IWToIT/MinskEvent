@@ -1,57 +1,81 @@
-import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-
-const filePath = path.join(process.cwd(), 'src', 'app', 'data', 'events.json');
+import { NextResponse } from "next/server";
+import { prisma } from "../../../lib/prisma";
 
 export async function GET() {
   try {
-    if (!fs.existsSync(filePath)) {
-      return NextResponse.json({ events: [] });
-    }
-    
-    const data = fs.readFileSync(filePath, 'utf8');
-    
-    if (!data.trim()) {
-      return NextResponse.json({ events: [] });
-    }
-    
-    const jsonData = JSON.parse(data);
-    return NextResponse.json(jsonData);
-    
+    const events = await prisma.event.findMany({
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    const eventsWithCoordinates = events.map((event) => ({
+      ...event,
+      coordinates: JSON.parse(event.coordinates),
+    }));
+
+    return NextResponse.json({ events: eventsWithCoordinates });
   } catch (error) {
-    console.error('Error reading events:', error);
-    return NextResponse.json({ events: [] });
+    console.error("Get events error:", error);
+    return NextResponse.json(
+      { error: "Ошибка загрузки событий" },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(request) {
   try {
-    const newEvent = await request.json();
-    
-    let jsonData = { events: [] };
-    if (fs.existsSync(filePath)) {
-      const data = fs.readFileSync(filePath, 'utf8');
-      if (data.trim()) {
-        jsonData = JSON.parse(data);
-      }
+    const { title, description, date, coordinates } = await request.json();
+
+    let user = await prisma.user.findFirst();
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          name: "Временный пользователь",
+          email: `temp-${Date.now()}@mail.com`,
+          password: "temp-password",
+        },
+      });
     }
-    
-    const eventWithId = {
-      id: Date.now(),
-      coordinates: newEvent.coordinates,
-      title: newEvent.title,
-      description: newEvent.description,
-      date: newEvent.date
+
+    const event = await prisma.event.create({
+      data: {
+        title,
+        description,
+        date,
+        coordinates: JSON.stringify(coordinates),
+        userId: user.id,
+      },
+      include: {
+        user: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    const eventWithCoordinates = {
+      ...event,
+      coordinates: JSON.parse(event.coordinates),
     };
-    
-    jsonData.events.push(eventWithId);
-    
-    fs.writeFileSync(filePath, JSON.stringify(jsonData, null, 2));
-    
-    return NextResponse.json({ success: true, event: eventWithId });
+
+    return NextResponse.json({ success: true, event: eventWithCoordinates });
   } catch (error) {
-    console.error('Error saving event:', error);
-    return NextResponse.json({ error: 'Ошибка сохранения' }, { status: 500 });
+    console.error("Create event error:", error);
+    return NextResponse.json(
+      { error: "Ошибка создания события" },
+      { status: 500 }
+    );
   }
 }
