@@ -36,7 +36,7 @@ export const AuthForm = ({ mode = 'register' }) => {
       });
 
       if (response.data.success) {
-        router.push('/account');
+        router.push('/');
       }
     } catch (error) {
       setError(error.response?.data?.error || 'Произошла ошибка');
