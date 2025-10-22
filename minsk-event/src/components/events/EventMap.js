@@ -1,18 +1,19 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { load } from "@2gis/mapgl";
+import { Clusterer } from "@2gis/mapgl-clusterer";
 import EventCard from "./EventCard";
 import { useNotification } from "../../hooks/useNotification";
 import { Notification } from "../ui/Notification";
+import { clusterIcon } from "../../assets/EventIcons";
 
 export default function EventMap() {
-  console.log("EventMap mounted");
   const mapContainer = useRef(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [events, setEvents] = useState([]);
   const mapRef = useRef(null);
   const mapglAPIRef = useRef(null);
-  const markersRef = useRef([]);
+  const clustererRef = useRef(null);
 
   const { notification, showNotification, hideNotification } =
     useNotification();
@@ -22,7 +23,7 @@ export default function EventMap() {
       try {
         const response = await fetch("/api/events");
         const data = await response.json();
-        console.log("API response:", data); // ← ДОБАВЬ ЭТУ СТРОКУ
+        console.log("API response:", data);
         setEvents(data.events);
       } catch (error) {
         console.error("Ошибка загрузки событий:", error);
@@ -61,9 +62,9 @@ export default function EventMap() {
     loadMap();
 
     return () => {
-      console.log("Cleaning up map");
-      markersRef.current.forEach((marker) => marker.destroy());
-      markersRef.current = [];
+      if (clustererRef.current) {
+        clustererRef.current.destroy();
+      }
       if (mapInstance) {
         mapInstance.destroy();
         mapRef.current = null;
@@ -74,22 +75,90 @@ export default function EventMap() {
   useEffect(() => {
     if (!mapRef.current || !mapglAPIRef.current || events.length === 0) return;
 
-    markersRef.current.forEach((marker) => marker.destroy());
-    markersRef.current = [];
+    if (clustererRef.current) {
+      clustererRef.current.destroy();
+    }
 
-    events.forEach((event) => {
-      const marker = new mapglAPIRef.current.Marker(mapRef.current, {
-        coordinates: event.coordinates,
+    const points = events.map((event) => ({
+      coordinates: event.coordinates,
+      properties: {
+        id: event.id,
         title: event.title,
-      });
+        description: event.description,
+        date: event.date,
+      },
+    }));
 
-      marker.on("click", () => {
-        setSelectedEvent(event);
-      });
-
-      markersRef.current.push(marker);
+    clustererRef.current = new Clusterer(mapRef.current, {
+      radius: 60,
     });
-  }, [events]);
+
+    clustererRef.current.load(points);
+
+    clustererRef.current.on("click", (event) => {
+      const { object } = event;
+
+      if (object.cluster) {
+        mapRef.current.setCenter(object.coordinates);
+        mapRef.current.setZoom(mapRef.current.getZoom() + 2);
+      } else {
+        const eventData = events.find((e) => e.id === object.properties.id);
+        if (eventData) {
+          setSelectedEvent(eventData);
+        }
+      }
+    });
+
+    clustererRef.current.on("style", (event) => {
+      const { object, style } = event;
+
+      if (object.cluster) {
+        const pointsCount = object.pointsCount;
+
+        style.icon = {
+          content: `
+            <div style="
+              background: #3B82F6;
+              color: white;
+              border: 3px solid white;
+              border-radius: 50%;
+              width: ${40 + Math.min(pointsCount, 10) * 4}px;
+              height: ${40 + Math.min(pointsCount, 10) * 4}px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-weight: bold;
+              font-size: 14px;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            ">
+              ${pointsCount}
+            </div>
+          `,
+        };
+      } else {
+        style.icon = {
+          content: `
+            <div style="
+              background: #EF4444;
+              color: white;
+              border: 3px solid white;
+              border-radius: 50%;
+              width: 32px;
+              height: 32px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 12px;
+              box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+              cursor: pointer;
+            ">
+              📍
+            </div>
+          `,
+        };
+      }
+    });
+  }, [mapRef.current, mapglAPIRef.current, events]);
 
   const refreshEvents = async () => {
     try {
@@ -104,7 +173,7 @@ export default function EventMap() {
   };
 
   return (
-    <div className="relative w-full h-96 rounded-lg shadow-lg">
+    <div className="relative w-full h-full rounded-lg shadow-lg">
       <button
         onClick={refreshEvents}
         className="absolute top-4 left-4 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100"
